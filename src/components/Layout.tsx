@@ -42,7 +42,7 @@ export function Layout({ children, overallPct }: LayoutProps) {
         {/* Logo */}
         <div style={{ padding: '0 20px 20px', borderBottom: '0.5px solid var(--color-border-tertiary)' }}>
           <h1 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: 'var(--color-text-primary)' }}>
-            🤖 Agent 学习管理
+            📚 学习管理
           </h1>
           <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', margin: '4px 0 0' }}>
             {user?.email || '未登录'}
