@@ -1,0 +1,1226 @@
+From eaab3bea6f446cc046047e324d0ecfaf222f26f9 Mon Sep 17 00:00:00 2001
+From: Yilubanhannuanyang <Yilubanhannuanyang@users.noreply.github.com>
+Date: Sun, 10 May 2026 15:51:06 +0800
+Subject: [PATCH] =?UTF-8?q?=E2=9C=A8=20feat:=20=E6=B7=BB=E5=8A=A0=E8=80=83?=
+ =?UTF-8?q?=E8=AF=95=E8=AE=A1=E5=88=92=E5=8A=9F=E8=83=BD?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 新增考试系统数据库Schema (supabase-exam-system.sql)
+- 新增 useExams Hook (useExams.ts)
+- 新增考试计划页面 (ExamsPage.tsx)
+- 更新Layout添加'考试计划'菜单
+- 更新App.tsx添加路由
+- 更新types/index.ts添加类型定义
+
+支持：四六级、雅思、计算机二级、公务员考试等主流考试
+---
+ src/App.tsx               |   2 +
+ src/components/Layout.tsx |   1 +
+ src/hooks/useExams.ts     | 214 +++++++++++++++++
+ src/pages/ExamsPage.tsx   | 378 +++++++++++++++++++++++++++++
+ src/types/index.ts        |  53 ++++-
+ supabase-exam-system.sql  | 484 ++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 1131 insertions(+), 1 deletion(-)
+ create mode 100644 src/hooks/useExams.ts
+ create mode 100644 src/pages/ExamsPage.tsx
+ create mode 100644 supabase-exam-system.sql
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 21e7ade..08a9e66 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -8,6 +8,7 @@ import { Layout } from './components/Layout';
+ import { LoginPage } from './pages/Login';
+ import { DashboardPage } from './pages/Dashboard';
+ import { RoadmapPage } from './pages/Roadmap';
++import { ExamsPage } from './pages/ExamsPage';
+ import { ProjectsPage } from './pages/Projects';
+ import { StatsPage } from './pages/Stats';
+ import { SettingsPage } from './pages/Settings';
+@@ -37,6 +38,7 @@ function AppInner() {
+       <Suspense fallback={<LoadingFallback />}>
+         {page === 'dashboard' && <DashboardPage />}
+         {page === 'roadmap' && <RoadmapPage />}
++        {page === 'exams' && <ExamsPage />}
+         {page === 'projects' && <ProjectsPage />}
+         {page === 'stats' && <StatsPage />}
+         {page === 'settings' && <SettingsPage />}
+diff --git a/src/components/Layout.tsx b/src/components/Layout.tsx
+index 0009d9e..f3361f9 100644
+--- a/src/components/Layout.tsx
++++ b/src/components/Layout.tsx
+@@ -13,6 +13,7 @@ interface LayoutProps {
+ const NAV_ITEMS: { key: AppPage; label: string; icon: string }[] = [
+   { key: 'dashboard', label: '今日任务', icon: '🟢' },
+   { key: 'roadmap', label: '学习路线', icon: '📅' },
++  { key: 'exams', label: '考试计划', icon: '📚' },
+   { key: 'projects', label: '开源项目', icon: '🟣' },
+   { key: 'stats', label: '进度统计', icon: '📊' },
+   { key: 'settings', label: '设置', icon: '⚙️' },
+diff --git a/src/hooks/useExams.ts b/src/hooks/useExams.ts
+new file mode 100644
+index 0000000..ccdff71
+--- /dev/null
++++ b/src/hooks/useExams.ts
+@@ -0,0 +1,214 @@
++// ============================================================
++// useExams.ts - 考试计划相关Hooks
++// ============================================================
++import { useState, useCallback, useEffect } from 'react';
++import { supabase } from '../lib/supabase';
++import type { Database } from '../types/database';
++
++type ExamTemplate = Database['public']['Tables']['exam_templates']['Row'];
++type UserExam = Database['public']['Tables']['user_exams']['Row'];
++type UserExamTask = Database['public']['Tables']['user_exam_tasks']['Row'];
++
++// ========== 获取考试模板列表 ==========
++export function useExamTemplates(category?: string) {
++  const [templates, setTemplates] = useState<ExamTemplate[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<Error | null>(null);
++
++  const fetchTemplates = useCallback(async () => {
++    try {
++      setLoading(true);
++      let query = supabase
++        .from('exam_templates')
++        .select('*')
++        .order('category', { ascending: true })
++        .order('total_days', { ascending: true });
++
++      if (category) {
++        query = query.eq('category', category);
++      }
++
++      const { data, error } = await query;
++
++      if (error) throw error;
++      setTemplates(data || []);
++    } catch (err) {
++      setError(err as Error);
++    } finally {
++      setLoading(false);
++    }
++  }, [category]);
++
++  useEffect(() => {
++    fetchTemplates();
++  }, [fetchTemplates]);
++
++  return { templates, loading, error, refetch: fetchTemplates };
++}
++
++// ========== 获取用户考试计划列表 ==========
++export function useUserExams(userId: string | undefined) {
++  const [exams, setExams] = useState<UserExam[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<Error | null>(null);
++
++  const fetchExams = useCallback(async () => {
++    if (!userId) {
++      setExams([]);
++      setLoading(false);
++      return;
++    }
++
++    try {
++      setLoading(true);
++      const { data, error } = await supabase
++        .from('user_exams')
++        .select('*')
++        .eq('user_id', userId)
++        .order('created_at', { ascending: false });
++
++      if (error) throw error;
++      setExams(data || []);
++    } catch (err) {
++      setError(err as Error);
++    } finally {
++      setLoading(false);
++    }
++  }, [userId]);
++
++  useEffect(() => {
++    fetchExams();
++  }, [fetchExams]);
++
++  return { exams, loading, error, refetch: fetchExams };
++}
++
++// ========== 创建用户考试计划 ==========
++export function useCreateUserExam() {
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState<Error | null>(null);
++
++  const createExam = useCallback(async (
++    userId: string,
++    examTemplateId: string,
++    examName: string,
++    startDate: string,
++    examDate: string
++  ) => {
++    try {
++      setLoading(true);
++      setError(null);
++
++      const { data, error } = await supabase
++        .from('user_exams')
++        .insert({
++          user_id: userId,
++          exam_template_id: examTemplateId,
++          exam_name: examName,
++          start_date: startDate,
++          exam_date: examDate,
++          status: 'active'
++        })
++        .select()
++        .single();
++
++      if (error) throw error;
++      return { data, error: null };
++    } catch (err) {
++      setError(err as Error);
++      return { data: null, error: err };
++    } finally {
++      setLoading(false);
++    }
++  }, []);
++
++  return { createExam, loading, error };
++}
++
++// ========== 获取用户考试任务 ==========
++export function useUserExamTasks(userExamId: string | undefined) {
++  const [tasks, setTasks] = useState<UserExamTask[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<Error | null>(null);
++
++  const fetchTasks = useCallback(async () => {
++    if (!userExamId) {
++      setTasks([]);
++      setLoading(false);
++      return;
++    }
++
++    try {
++      setLoading(true);
++      const { data, error } = await supabase
++        .from('user_exam_tasks')
++        .select('*')
++        .eq('user_exam_id', userExamId)
++        .order('task_date', { ascending: true });
++
++      if (error) throw error;
++      setTasks(data || []);
++    } catch (err) {
++      setError(err as Error);
++    } finally {
++      setLoading(false);
++    }
++  }, [userExamId]);
++
++  useEffect(() => {
++    fetchTasks();
++  }, [fetchTasks]);
++
++  return { tasks, loading, error, refetch: fetchTasks };
++}
++
++// ========== 更新任务完成状态 ==========
++export function useUpdateExamTask() {
++  const [loading, setLoading] = useState(false);
++
++  const toggleTask = useCallback(async (taskId: string, isCompleted: boolean) => {
++    try {
++      setLoading(true);
++      const { error } = await supabase
++        .from('user_exam_tasks')
++        .update({
++          is_completed: isCompleted,
++          completed_at: isCompleted ? new Date().toISOString() : null
++        })
++        .eq('id', taskId);
++
++      if (error) throw error;
++      return { error: null };
++    } catch (err) {
++      return { error: err as Error };
++    } finally {
++      setLoading(false);
++    }
++  }, []);
++
++  return { toggleTask, loading };
++}
++
++// ========== 删除用户考试计划 ==========
++export function useDeleteUserExam() {
++  const [loading, setLoading] = useState(false);
++
++  const deleteExam = useCallback(async (examId: string) => {
++    try {
++      setLoading(true);
++      const { error } = await supabase
++        .from('user_exams')
++        .delete()
++        .eq('id', examId);
++
++      if (error) throw error;
++      return { error: null };
++    } catch (err) {
++      return { error: err as Error };
++    } finally {
++      setLoading(false);
++    }
++  }, []);
++
++  return { deleteExam, loading };
++}
+diff --git a/src/pages/ExamsPage.tsx b/src/pages/ExamsPage.tsx
+new file mode 100644
+index 0000000..ae61cec
+--- /dev/null
++++ b/src/pages/ExamsPage.tsx
+@@ -0,0 +1,378 @@
++// ============================================================
++// ExamsPage.tsx - 考试计划页面
++// ============================================================
++import { useState } from 'react';
++import { useAuth } from '../hooks/useAuth';
++import { useExamTemplates, useUserExams, useCreateUserExam, useDeleteUserExam } from '../hooks/useExams';
++
++// ========== 考试类型分类 ==========
++const CATEGORY_LABELS: Record<string, string> = {
++  'language': '🇬🇧 语言考试',
++  'computer': '💻 计算机考试',
++  'professional': '💼 职业资格',
++  'postgraduate': '🎓 研究生考试',
++  'competition': '🏆 竞赛类',
++  'other': '📋 其他'
++};
++
++// ========== 考试计划卡片 ==========
++function ExamCard({ 
++  exam, 
++  onDelete 
++}: { 
++  exam: any; 
++  onDelete: (id: string) => void;
++}) {
++  const daysLeft = Math.ceil(
++    (new Date(exam.exam_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
++  );
++
++  return (
++    <div style={{
++      padding: '16px',
++      background: 'var(--color-background-primary)',
++      border: '0.5px solid var(--color-border-tertiary)',
++      borderRadius: 'var(--border-radius-lg)',
++      marginBottom: '12px'
++    }}>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
++        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>{exam.exam_name}</h3>
++        <button
++          onClick={() => onDelete(exam.id)}
++          style={{
++            border: 'none',
++            background: 'transparent',
++            color: 'var(--color-text-tertiary)',
++            cursor: 'pointer',
++            fontSize: '12px'
++          }}
++        >
++          删除
++        </button>
++      </div>
++      <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
++        <div>📅 考试日期：{exam.exam_date}</div>
++        <div>⏱️ 开始日期：{exam.start_date}</div>
++      </div>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
++        <span style={{
++          fontSize: '12px',
++          fontWeight: 500,
++          color: daysLeft <= 7 ? 'var(--color-error)' : daysLeft <= 30 ? 'var(--color-warning)' : 'var(--color-success)'
++        }}>
++          {daysLeft > 0 ? `还剩 ${daysLeft} 天` : '已过期'}
++        </span>
++        <div style={{
++          flex: 1,
++          marginLeft: '12px',
++          height: '6px',
++          background: 'var(--color-border-tertiary)',
++          borderRadius: '3px',
++          overflow: 'hidden'
++        }}>
++          <div style={{
++            width: `${exam.progress || 0}%`,
++            height: '100%',
++            background: 'var(--color-text-primary)',
++            borderRadius: '3px'
++          }} />
++        </div>
++        <span style={{ marginLeft: '8px', fontSize: '12px' }}>{exam.progress || 0}%</span>
++      </div>
++    </div>
++  );
++}
++
++// ========== 新建考试计划弹窗 ==========
++function CreateExamModal({ 
++  onClose, 
++  onSuccess 
++}: { 
++  onClose: () => void; 
++  onSuccess: () => void;
++}) {
++  const { user } = useAuth();
++  const { templates, loading: templatesLoading } = useExamTemplates();
++  const { createExam, loading: creating } = useCreateUserExam();
++  
++  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
++  const [examDate, setExamDate] = useState<string>('');
++  const [startDate, setStartDate] = useState<string>('');
++  const [selectedCategory, setSelectedCategory] = useState<string>('all');
++
++  const filteredTemplates = selectedCategory === 'all' 
++    ? templates 
++    : templates.filter(t => t.category === selectedCategory);
++
++  const handleSubmit = async () => {
++    if (!user || !selectedTemplate || !examDate || !startDate) {
++      alert('请填写完整信息！');
++      return;
++    }
++
++    const template = templates.find(t => t.id === selectedTemplate);
++    const { error } = await createExam(
++      user.id,
++      selectedTemplate,
++      template?.name || '',
++      startDate,
++      examDate
++    );
++
++    if (error) {
++      alert('创建失败：' + error.message);
++    } else {
++      onSuccess();
++      onClose();
++    }
++  };
++
++  return (
++    <div style={{
++      position: 'fixed',
++      top: 0,
++      left: 0,
++      right: 0,
++      bottom: 0,
++      background: 'rgba(0,0,0,0.5)',
++      display: 'flex',
++      alignItems: 'center',
++      justifyContent: 'center',
++      zIndex: 100
++    }}>
++      <div style={{
++        background: 'var(--color-background-primary)',
++        borderRadius: 'var(--border-radius-lg)',
++        padding: '24px',
++        width: '90%',
++        maxWidth: '600px',
++        maxHeight: '80vh',
++        overflowY: 'auto'
++      }}>
++        <h2 style={{ marginTop: 0, fontSize: '18px' }}>新建考试计划</h2>
++
++        {/* 分类筛选 */}
++        <div style={{ marginBottom: '16px' }}>
++          <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', fontWeight: 500 }}>
++            考试分类
++          </label>
++          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
++            <button
++              onClick={() => setSelectedCategory('all')}
++              style={{
++                padding: '6px 12px',
++                border: '0.5px solid var(--color-border-tertiary)',
++                borderRadius: 'var(--border-radius-md)',
++                background: selectedCategory === 'all' ? 'var(--color-text-primary)' : 'transparent',
++                color: selectedCategory === 'all' ? 'var(--color-background-primary)' : 'var(--color-text-primary)',
++                cursor: 'pointer',
++                fontSize: '12px'
++              }}
++            >
++              全部
++            </button>
++            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
++              <button
++                key={key}
++                onClick={() => setSelectedCategory(key)}
++                style={{
++                  padding: '6px 12px',
++                  border: '0.5px solid var(--color-border-tertiary)',
++                  borderRadius: 'var(--border-radius-md)',
++                  background: selectedCategory === key ? 'var(--color-text-primary)' : 'transparent',
++                  color: selectedCategory === key ? 'var(--color-background-primary)' : 'var(--color-text-primary)',
++                  cursor: 'pointer',
++                  fontSize: '12px'
++                }}
++              >
++                {label}
++              </button>
++            ))}
++          </div>
++        </div>
++
++        {/* 选择考试类型 */}
++        <div style={{ marginBottom: '16px' }}>
++          <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', fontWeight: 500 }}>
++            考试类型 *
++          </label>
++          <select
++            value={selectedTemplate}
++            onChange={(e) => setSelectedTemplate(e.target.value)}
++            style={{
++              width: '100%',
++              padding: '8px 12px',
++              border: '0.5px solid var(--color-border-tertiary)',
++              borderRadius: 'var(--border-radius-md)',
++              fontSize: '13px',
++              background: 'var(--color-background-primary)',
++              color: 'var(--color-text-primary)'
++            }}
++          >
++            <option value="">-- 请选择考试 --</option>
++            {filteredTemplates.map(template => (
++              <option key={template.id} value={template.id}>
++                {template.icon} {template.name}（建议备考{template.total_days}天）
++              </option>
++            ))}
++          </select>
++        </div>
++
++        {/* 开始日期 */}
++        <div style={{ marginBottom: '16px' }}>
++          <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', fontWeight: 500 }}>
++            开始日期 *
++          </label>
++          <input
++            type="date"
++            value={startDate}
++            onChange={(e) => setStartDate(e.target.value)}
++            style={{
++              width: '100%',
++              padding: '8px 12px',
++              border: '0.5px solid var(--color-border-tertiary)',
++              borderRadius: 'var(--border-radius-md)',
++              fontSize: '13px',
++              background: 'var(--color-background-primary)',
++              color: 'var(--color-text-primary)'
++            }}
++          />
++        </div>
++
++        {/* 考试日期 */}
++        <div style={{ marginBottom: '24px' }}>
++          <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', fontWeight: 500 }}>
++            考试日期 *
++          </label>
++          <input
++            type="date"
++            value={examDate}
++            onChange={(e) => setExamDate(e.target.value)}
++            style={{
++              width: '100%',
++              padding: '8px 12px',
++              border: '0.5px solid var(--color-border-tertiary)',
++              borderRadius: 'var(--border-radius-md)',
++              fontSize: '13px',
++              background: 'var(--color-background-primary)',
++              color: 'var(--color-text-primary)'
++            }}
++          />
++        </div>
++
++        {/* 按钮 */}
++        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
++          <button
++            onClick={onClose}
++            style={{
++              padding: '8px 16px',
++              border: '0.5px solid var(--color-border-tertiary)',
++              borderRadius: 'var(--border-radius-md)',
++              background: 'transparent',
++              cursor: 'pointer',
++              fontSize: '13px'
++            }}
++          >
++            取消
++          </button>
++          <button
++            onClick={handleSubmit}
++            disabled={creating}
++            style={{
++              padding: '8px 16px',
++              border: 'none',
++              borderRadius: 'var(--border-radius-md)',
++              background: 'var(--color-text-primary)',
++              color: 'var(--color-background-primary)',
++              cursor: creating ? 'not-allowed' : 'pointer',
++              fontSize: '13px',
++              opacity: creating ? 0.6 : 1
++            }}
++          >
++            {creating ? '创建中...' : '创建计划'}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++// ========== 主页面 ==========
++export function ExamsPage() {
++  const { user } = useAuth();
++  const { exams, loading, refetch } = useUserExams(user?.id);
++  const { deleteExam } = useDeleteUserExam();
++  const [showCreateModal, setShowCreateModal] = useState(false);
++
++  const handleDelete = async (examId: string) => {
++    if (!confirm('确定要删除这个考试计划吗？')) return;
++    
++    const { error } = await deleteExam(examId);
++    if (error) {
++      alert('删除失败：' + error.message);
++    } else {
++      refetch();
++    }
++  };
++
++  return (
++    <div>
++      {/* 标题栏 */}
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
++        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>📚 考试计划</h2>
++        <button
++          onClick={() => setShowCreateModal(true)}
++          style={{
++            padding: '8px 16px',
++            border: 'none',
++            borderRadius: 'var(--border-radius-md)',
++            background: 'var(--color-text-primary)',
++            color: 'var(--color-background-primary)',
++            cursor: 'pointer',
++            fontSize: '13px',
++            fontWeight: 500
++          }}
++        >
++          + 新建计划
++        </button>
++      </div>
++
++      {/* 考试计划列表 */}
++      {loading ? (
++        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-tertiary)' }}>
++          加载中...
++        </div>
++      ) : exams.length === 0 ? (
++        <div style={{
++          textAlign: 'center',
++          padding: '60px 20px',
++          background: 'var(--color-background-primary)',
++          borderRadius: 'var(--border-radius-lg)',
++          border: '0.5px dashed var(--color-border-tertiary)'
++        }}>
++          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
++          <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
++            暂无考试计划
++          </div>
++          <div style={{ fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
++            点击"新建计划"开始制定你的考试备考计划
++          </div>
++        </div>
++      ) : (
++        <div>
++          {exams.map(exam => (
++            <ExamCard key={exam.id} exam={exam} onDelete={handleDelete} />
++          ))}
++        </div>
++      )}
++
++      {/* 新建弹窗 */}
++      {showCreateModal && (
++        <CreateExamModal
++          onClose={() => setShowCreateModal(false)}
++          onSuccess={refetch}
++        />
++      )}
++    </div>
++  );
++}
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 01196b1..36521ac 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -125,7 +125,7 @@ export interface DailyCompletion {
+ }
+ 
+ // ---------- 路由 ----------
+-export type AppPage = 'dashboard' | 'roadmap' | 'projects' | 'stats' | 'settings' | 'login';
++export type AppPage = 'dashboard' | 'roadmap' | 'exams' | 'projects' | 'stats' | 'settings' | 'login';
+ 
+ // ---------- Server酱 ----------
+ export interface ServerChanPayload {
+@@ -142,3 +142,54 @@ export interface ServerChanResponse {
+     error?: string;
+   };
+ }
++
++// ---------- 考试系统 ----------
++export interface ExamTemplate {
++  id: string;
++  name: string;
++  category: string;
++  total_days: number;
++  description: string | null;
++  icon: string | null;
++  created_at: string;
++}
++
++export interface ExamTaskTemplate {
++  id: string;
++  exam_template_id: string;
++  day_offset: number;
++  phase: string;
++  week_number: number | null;
++  task_content: string;
++  estimated_minutes: number | null;
++  difficulty: number | null;
++  task_type: string | null;
++  created_at: string;
++}
++
++export interface UserExam {
++  id: string;
++  user_id: string;
++  exam_template_id: string;
++  exam_name: string;
++  start_date: string;
++  exam_date: string;
++  status: string;
++  progress: number | null;
++  created_at: string;
++  updated_at: string;
++}
++
++export interface UserExamTask {
++  id: string;
++  user_exam_id: string;
++  task_date: string;
++  task_content: string;
++  estimated_minutes: number | null;
++  difficulty: number | null;
++  task_type: string | null;
++  phase: string | null;
++  is_completed: boolean | null;
++  completed_at: string | null;
++  created_at: string;
++}
+diff --git a/supabase-exam-system.sql b/supabase-exam-system.sql
+new file mode 100644
+index 0000000..4eef7c4
+--- /dev/null
++++ b/supabase-exam-system.sql
+@@ -0,0 +1,484 @@
++-- ============================================================
++-- 阶段性考试与任务系统 - 数据库Schema
++-- ============================================================
++
++-- 1. 考试模板表（存储所有考试类型）
++CREATE TABLE IF NOT EXISTS exam_templates (
++  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
++  name TEXT NOT NULL,                 -- 考试名称
++  category TEXT NOT NULL,             -- 分类：language, computer, professional, competition, other
++  total_days INTEGER NOT NULL,        -- 建议备考天数
++  description TEXT,                   -- 考试说明
++  icon TEXT DEFAULT '📚',            -- 图标
++  created_at TIMESTAMP DEFAULT NOW()
++);
++
++-- 2. 考试任务模板表（每个考试的具体任务）
++CREATE TABLE IF NOT EXISTS exam_task_templates (
++  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
++  exam_template_id UUID REFERENCES exam_templates(id) ON DELETE CASCADE,
++  day_offset INTEGER NOT NULL,        -- 第几天（负数表示距离考试的天数）
++  phase TEXT NOT NULL,                -- 阶段名称（基础/强化/冲刺）
++  week_number INTEGER,                 -- 第几周
++  task_content TEXT NOT NULL,          -- 任务内容
++  estimated_minutes INTEGER,          -- 预计用时（分钟）
++  difficulty INTEGER DEFAULT 1,       -- 难度 1-5
++  task_type TEXT,                     -- 任务类型：listening, reading, writing, practice, mock
++  created_at TIMESTAMP DEFAULT NOW()
++);
++
++-- 3. 用户考试计划表
++CREATE TABLE IF NOT EXISTS user_exams (
++  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
++  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
++  exam_template_id UUID REFERENCES exam_templates(id) ON DELETE CASCADE,
++  exam_name TEXT NOT NULL,            -- 考试名称（冗余，方便查询）
++  start_date DATE NOT NULL,           -- 开始日期
++  exam_date DATE NOT NULL,            -- 考试日期
++  status TEXT DEFAULT 'active',       -- 状态：active, paused, completed, abandoned
++  progress INTEGER DEFAULT 0,         -- 进度 0-100
++  created_at TIMESTAMP DEFAULT NOW(),
++  updated_at TIMESTAMP DEFAULT NOW()
++);
++
++-- 4. 用户每日考试任务表
++CREATE TABLE IF NOT EXISTS user_exam_tasks (
++  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
++  user_exam_id UUID REFERENCES user_exams(id) ON DELETE CASCADE,
++  task_date DATE NOT NULL,            -- 任务日期
++  task_content TEXT NOT NULL,         -- 任务内容
++  estimated_minutes INTEGER,          -- 预计用时
++  difficulty INTEGER DEFAULT 1,       -- 难度
++  task_type TEXT,                     -- 任务类型
++  phase TEXT,                         -- 阶段
++  is_completed BOOLEAN DEFAULT FALSE, -- 是否完成
++  completed_at TIMESTAMP,             -- 完成时间
++  created_at TIMESTAMP DEFAULT NOW()
++);
++
++-- ============================================================
++-- RLS 策略
++-- ============================================================
++
++-- exam_templates: 所有人可读
++ALTER TABLE exam_templates ENABLE ROW LEVEL SECURITY;
++CREATE POLICY "所有人可读取考试模板" ON exam_templates
++  FOR SELECT USING (true);
++
++-- exam_task_templates: 所有人可读
++ALTER TABLE exam_task_templates ENABLE ROW LEVEL SECURITY;
++CREATE POLICY "所有人可读取考试任务模板" ON exam_task_templates
++  FOR SELECT USING (true);
++
++-- user_exams: 用户只能管理自己的考试计划
++ALTER TABLE user_exams ENABLE ROW LEVEL SECURITY;
++CREATE POLICY "用户可管理自己的考试计划" ON user_exams
++  FOR ALL USING (auth.uid() = user_id);
++
++-- user_exam_tasks: 用户只能管理自己的考试任务
++ALTER TABLE user_exam_tasks ENABLE ROW LEVEL SECURITY;
++CREATE POLICY "用户可管理自己的考试任务" ON user_exam_tasks
++  FOR ALL USING (
++    user_exam_id IN (
++      SELECT id FROM user_exams WHERE user_id = auth.uid()
++    )
++  );
++
++-- ============================================================
++-- 索引优化
++-- ============================================================
++CREATE INDEX idx_exam_task_templates_exam_id ON exam_task_templates(exam_template_id);
++CREATE INDEX idx_user_exams_user_id ON user_exams(user_id);
++CREATE INDEX idx_user_exam_tasks_user_exam_id ON user_exam_tasks(user_exam_id);
++CREATE INDEX idx_user_exam_tasks_task_date ON user_exam_tasks(task_date);
++
++-- ============================================================
++-- 插入主流考试模板数据
++-- ============================================================
++
++-- 英语类
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('英语四级（CET-4）', 'language', 90, '大学英语四级考试，词汇量4500左右', '🇬🇧'),
++('英语六级（CET-6）', 'language', 90, '大学英语六级考试，词汇量5500左右', '🇬🇧'),
++('雅思（IELTS）', 'language', 120, '国际英语语言测试系统，听说读写四项', '🇬🇧'),
++('托福（TOEFL）', 'language', 120, '托福考试，北美留学必备', '🇺🇸'),
++('GRE', 'language', 150, '研究生入学考试，词汇量12000+', '🇺🇸'),
++('GMAT', 'language', 120, '商科研究生入学考试', '🇺🇸'),
++('日语N1', 'language', 180, '日语能力测试N1级别', '🇯🇵'),
++('日语N2', 'language', 150, '日语能力测试N2级别', '🇯🇵'),
++('日语N3', 'language', 120, '日语能力测试N3级别', '🇯🇵'),
++('韩语TOPIK', 'language', 120, '韩语能力考试', '🇰🇷');
++
++-- 计算机类
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('计算机二级（MS Office）', 'computer', 60, '全国计算机等级考试二级，Office高级应用', '💻'),
++('计算机二级（Python）', 'computer', 60, '全国计算机等级考试二级，Python语言', '🐍'),
++('计算机三级（网络技术）', 'computer', 75, '全国计算机等级考试三级', '🌐'),
++('软件设计师（软考中级）', 'computer', 120, '计算机技术与软件专业技术资格（中级）', '👨‍💻'),
++('网络工程师（软考中级）', 'computer', 120, '计算机技术与软件专业技术资格（中级）', '🌐'),
++('数据库系统工程师', 'computer', 120, '计算机技术与软件专业技术资格（中级）', '🗄️');
++
++-- 职业资格类
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('教师资格证（小学）', 'professional', 90, '小学教师资格证考试', '👩‍🏫'),
++('教师资格证（中学）', 'professional', 90, '中学教师资格证考试', '👨‍🏫'),
++('注册会计师（CPA）', 'professional', 180, '注册会计师考试，6门科目', '📊'),
++('公务员考试', 'professional', 120, '国家/地方公务员录用考试', '🏛️'),
++('法律职业资格考试', 'professional', 150, '国家统一法律职业资格考试（法考）', '⚖️'),
++('执业医师资格证', 'professional', 150, '医师资格考试', '🏥');
++
++-- 研究生入学考试
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('考研（公共课+专业课）', 'postgraduate', 300, '全国硕士研究生入学考试，长期备考', '🎓'),
++('管理类联考（MBA/MPA/MEM）', 'postgraduate', 180, '管理类专业学位联考', '💼'),
++('法律硕士（法硕）', 'postgraduate', 240, '法律硕士专业学位研究生入学考试', '⚖️');
++
++-- 竞赛类
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('数学建模竞赛', 'competition', 90, '全国大学生数学建模竞赛培训', '📐'),
++('ACM程序设计竞赛', 'competition', 120, 'ACM-ICPC程序设计竞赛培训', '💻'),
++('蓝桥杯大赛', 'competition', 90, '蓝桥杯全国软件和信息技术专业人才大赛', '🏆'),
++('挑战杯', 'competition', 120, '挑战杯全国大学生课外学术科技作品竞赛', '🏅'),
++('互联网+大赛', 'competition', 90, '中国"互联网+"大学生创新创业大赛', '💡');
++
++-- 其他类
++INSERT INTO exam_templates (name, category, total_days, description, icon) VALUES
++('普通话水平测试', 'other', 30, '普通话水平等级测试', '🎤'),
++('驾驶证（科目一）', 'other', 15, '机动车驾驶证理论考试', '🚗'),
++('驾驶证（科目二三四）', 'other', 45, '机动车驾驶证场地与路考', '🚗');
++
++-- ============================================================
++-- 为"英语四级"插入任务模板（示例）
++-- ============================================================
++
++-- 基础阶段（第1-30天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -90 + (week_num - 1) * 7 + day_num,
++  '基础阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 5 = 1 THEN '听力训练：新闻听力 ' || (week_num * 5 + day_num) || ' 篇'
++    WHEN day_num % 5 = 2 THEN '阅读理解：仔细阅读 ' || (week_num * 3 + day_num) || ' 篇'
++    WHEN day_num % 5 = 3 THEN '写作练习：作文 ' || (week_num) || ' 篇'
++    WHEN day_num % 5 = 4 THEN '翻译练习：汉译英 ' || (week_num * 2) || ' 句'
++    ELSE '单词背诵：核心词汇 ' || (50 + week_num * 10) || ' 个'
++  END,
++  CASE 
++    WHEN day_num % 5 = 1 THEN 30
++    WHEN day_num % 5 = 2 THEN 40
++    WHEN day_num % 5 = 3 THEN 30
++    WHEN day_num % 5 = 4 THEN 20
++    ELSE 30
++  END,
++  CASE 
++    WHEN week_num <= 2 THEN 1
++    WHEN week_num <= 4 THEN 2
++    ELSE 3
++  END,
++  CASE 
++    WHEN day_num % 5 = 1 THEN 'listening'
++    WHEN day_num % 5 = 2 THEN 'reading'
++    WHEN day_num % 5 = 3 THEN 'writing'
++    WHEN day_num % 5 = 4 THEN 'translation'
++    ELSE 'vocabulary'
++  END
++FROM exam_templates,
++     generate_series(1, 4) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '英语四级（CET-4）'
++  AND (week_num - 1) * 7 + day_num <= 30;
++
++-- 强化阶段（第31-60天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -60 + (week_num - 5) * 7 + day_num,
++  '强化阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 5 = 1 THEN '听力训练：长对话 ' || (week_num * 5) || ' 篇'
++    WHEN day_num % 5 = 2 THEN '阅读理解：快速阅读 ' || (week_num * 3) || ' 篇'
++    WHEN day_num % 5 = 3 THEN '写作练习：真题作文 ' || (week_num - 4) || ' 篇'
++    WHEN day_num % 5 = 4 THEN '翻译练习：真题翻译 ' || (week_num - 4) || ' 篇'
++    ELSE '单词复习：核心词汇复习 ' || (week_num * 50) || ' 个'
++  END,
++  CASE 
++    WHEN day_num % 5 = 1 THEN 35
++    WHEN day_num % 5 = 2 THEN 45
++    WHEN day_num % 5 = 3 THEN 35
++    WHEN day_num % 5 = 4 THEN 25
++    ELSE 30
++  END,
++  CASE 
++    WHEN week_num <= 6 THEN 3
++    WHEN week_num <= 8 THEN 4
++    ELSE 4
++  END,
++  CASE 
++    WHEN day_num % 5 = 1 THEN 'listening'
++    WHEN day_num % 5 = 2 THEN 'reading'
++    WHEN day_num % 5 = 3 THEN 'writing'
++    WHEN day_num % 5 = 4 THEN 'translation'
++    ELSE 'vocabulary'
++  END
++FROM exam_templates,
++     generate_series(5, 8) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '英语四级（CET-4）'
++  AND (week_num - 1) * 7 + day_num <= 60;
++
++-- 冲刺阶段（第61-90天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -30 + (week_num - 9) * 7 + day_num,
++  '冲刺阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 7 = 1 THEN '真题模拟：完整套题 ' || (week_num - 8) || ' 套'
++    WHEN day_num % 7 = 2 THEN '听力强化：真题听力 ' || (week_num * 3) || ' 篇'
++    WHEN day_num % 7 = 3 THEN '阅读强化：真题阅读 ' || (week_num * 3) || ' 篇'
++    WHEN day_num % 7 = 4 THEN '写作强化：预测作文 ' || (week_num - 8) || ' 篇'
++    WHEN day_num % 7 = 5 THEN '翻译强化：预测翻译 ' || (week_num - 8) || ' 篇'
++    WHEN day_num % 7 = 6 THEN '错题复习：整理错题本'
++    ELSE '单词冲刺：高频词汇复习'
++  END,
++  CASE 
++    WHEN day_num % 7 = 1 THEN 120
++    WHEN day_num % 7 = 2 THEN 40
++    WHEN day_num % 7 = 3 THEN 50
++    WHEN day_num % 7 = 4 THEN 40
++    WHEN day_num % 7 = 5 THEN 30
++    WHEN day_num % 7 = 6 THEN 60
++    ELSE 30
++  END,
++  5,
++  CASE 
++    WHEN day_num % 7 = 1 THEN 'mock'
++    WHEN day_num % 7 = 2 THEN 'listening'
++    WHEN day_num % 7 = 3 THEN 'reading'
++    WHEN day_num % 7 = 4 THEN 'writing'
++    WHEN day_num % 7 = 5 THEN 'translation'
++    WHEN day_num % 7 = 6 THEN 'review'
++    ELSE 'vocabulary'
++  END
++FROM exam_templates,
++     generate_series(9, 13) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '英语四级（CET-4）'
++  AND (week_num - 1) * 7 + day_num <= 90;
++
++-- ============================================================
++-- 为"计算机二级（MS Office）"插入任务模板
++-- ============================================================
++
++-- 基础阶段（第1-20天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -60 + (week_num - 1) * 7 + day_num,
++  '基础阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 3 = 1 THEN 'Word基础：文本编辑与格式化（第' || week_num || '天）'
++    WHEN day_num % 3 = 2 THEN 'Excel基础：公式与函数（第' || week_num || '天）'
++    ELSE 'PowerPoint基础：演示文稿制作（第' || week_num || '天）'
++  END,
++  CASE 
++    WHEN day_num % 3 = 1 THEN 40
++    WHEN day_num % 3 = 2 THEN 50
++    ELSE 30
++  END,
++  CASE 
++    WHEN week_num <= 1 THEN 1
++    WHEN week_num <= 2 THEN 2
++    ELSE 2
++  END,
++  CASE 
++    WHEN day_num % 3 = 1 THEN 'word'
++    WHEN day_num % 3 = 2 THEN 'excel'
++    ELSE 'powerpoint'
++  END
++FROM exam_templates,
++     generate_series(1, 3) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '计算机二级（MS Office）'
++  AND (week_num - 1) * 7 + day_num <= 20;
++
++-- 强化阶段（第21-40天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -40 + (week_num - 4) * 7 + day_num,
++  '强化阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 4 = 1 THEN 'Word高级：样式、目录、邮件合并'
++    WHEN day_num % 4 = 2 THEN 'Excel高级：数据透视表、图表'
++    WHEN day_num % 4 = 3 THEN 'PowerPoint高级：动画、切换、母版'
++    ELSE '选择题练习：公共基础知识'
++  END,
++  CASE 
++    WHEN day_num % 4 = 1 THEN 45
++    WHEN day_num % 4 = 2 THEN 55
++    WHEN day_num % 4 = 3 THEN 35
++    ELSE 30
++  END,
++  3,
++  CASE 
++    WHEN day_num % 4 = 1 THEN 'word'
++    WHEN day_num % 4 = 2 THEN 'excel'
++    WHEN day_num % 4 = 3 THEN 'powerpoint'
++    ELSE 'choice'
++  END
++FROM exam_templates,
++     generate_series(4, 6) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '计算机二级（MS Office）'
++  AND (week_num - 1) * 7 + day_num <= 40;
++
++-- 冲刺阶段（第41-60天）
++INSERT INTO exam_task_templates (exam_template_id, day_offset, phase, week_number, task_content, estimated_minutes, difficulty, task_type)
++SELECT 
++  id,
++  -20 + (week_num - 7) * 7 + day_num,
++  '冲刺阶段',
++  week_num,
++  CASE 
++    WHEN day_num % 7 = 1 THEN '真题模拟：整套操作题（第' || (week_num - 6) || '套）'
++    WHEN day_num % 7 = 2 THEN 'Word冲刺：真题演练'
++    WHEN day_num % 7 = 3 THEN 'Excel冲刺：真题演练'
++    WHEN day_num % 7 = 4 THEN 'PowerPoint冲刺：真题演练'
++    WHEN day_num % 7 = 5 THEN '选择题冲刺：高频考点'
++    WHEN day_num % 7 = 6 THEN '错题复习：整理操作题错题'
++    ELSE '全套模拟：完整考试流程'
++  END,
++  CASE 
++    WHEN day_num % 7 = 1 THEN 90
++    WHEN day_num % 7 = 2 THEN 50
++    WHEN day_num % 7 = 3 THEN 50
++    WHEN day_num % 7 = 4 THEN 40
++    WHEN day_num % 7 = 5 THEN 30
++    WHEN day_num % 7 = 6 THEN 40
++    ELSE 120
++  END,
++  4,
++  CASE 
++    WHEN day_num % 7 = 1 THEN 'mock'
++    WHEN day_num % 7 = 2 THEN 'word'
++    WHEN day_num % 7 = 3 THEN 'excel'
++    WHEN day_num % 7 = 4 THEN 'powerpoint'
++    WHEN day_num % 7 = 5 THEN 'choice'
++    WHEN day_num % 7 = 6 THEN 'review'
++    ELSE 'mock'
++  END
++FROM exam_templates,
++     generate_series(7, 9) AS week_num,
++     generate_series(1, 7) AS day_num
++WHERE name = '计算机二级（MS Office）'
++  AND (week_num - 1) * 7 + day_num <= 60;
++
++-- ============================================================
++-- 函数：生成用户考试任务
++-- ============================================================
++CREATE OR REPLACE FUNCTION generate_user_exam_tasks(
++  p_user_exam_id UUID
++)
++RETURNS void AS $$
++DECLARE
++  v_user_id UUID;
++  v_exam_template_id UUID;
++  v_start_date DATE;
++  v_exam_date DATE;
++  v_total_days INTEGER;
++  v_template_record RECORD;
++BEGIN
++  -- 获取用户考试信息
++  SELECT 
++    ue.user_id, ue.exam_template_id, ue.start_date, ue.exam_date
++  INTO 
++    v_user_id, v_exam_template_id, v_start_date, v_exam_date
++  FROM user_exams ue
++  WHERE ue.id = p_user_exam_id;
++
++  v_total_days := v_exam_date - v_start_date;
++
++  -- 删除已存在的任务（重新生成）
++  DELETE FROM user_exam_tasks WHERE user_exam_id = p_user_exam_id;
++
++  -- 从模板生成每日任务
++  INSERT INTO user_exam_tasks (
++    user_exam_id,
++    task_date,
++    task_content,
++    estimated_minutes,
++    difficulty,
++    task_type,
++    phase
++  )
++  SELECT 
++    p_user_exam_id,
++    v_start_date + (ett.day_offset + v_total_days) * INTERVAL '1 day',
++    ett.task_content,
++    ett.estimated_minutes,
++    ett.difficulty,
++    ett.task_type,
++    ett.phase
++  FROM exam_task_templates ett
++  WHERE ett.exam_template_id = v_exam_template_id
++    AND ett.day_offset + v_total_days >= 0
++    AND ett.day_offset + v_total_days < v_total_days
++  ORDER BY ett.day_offset;
++
++  -- 如果模板数据不足，补充通用任务
++  IF NOT EXISTS (SELECT 1 FROM user_exam_tasks WHERE user_exam_id = p_user_exam_id) THEN
++    INSERT INTO user_exam_tasks (
++      user_exam_id,
++      task_date,
++      task_content,
++      estimated_minutes,
++      difficulty,
++      task_type,
++      phase
++    )
++    SELECT 
++      p_user_exam_id,
++      v_start_date + (seq - 1) * INTERVAL '1 day',
++      '📚 第' || seq || '天学习任务：复习' || et.name || '知识点',
++      60,
++      3,
++      'study',
++      CASE 
++        WHEN seq <= v_total_days * 0.3 THEN '基础阶段'
++        WHEN seq <= v_total_days * 0.7 THEN '强化阶段'
++        ELSE '冲刺阶段'
++      END
++    FROM exam_templates et,
++         generate_series(1, v_total_days) AS seq
++    WHERE et.id = v_exam_template_id;
++  END IF;
++END;
++$$ LANGUAGE plpgsql SECURITY DEFINER;
++
++-- ============================================================
++-- 触发器：自动生成任务
++-- ============================================================
++CREATE OR REPLACE FUNCTION trigger_generate_exam_tasks()
++RETURNS TRIGGER AS $$
++BEGIN
++  PERFORM generate_user_exam_tasks(NEW.id);
++  RETURN NEW;
++END;
++$$ LANGUAGE plpgsql;
++
++CREATE OR REPLACE TRIGGER trg_generate_exam_tasks
++  AFTER INSERT ON user_exams
++  FOR EACH ROW
++  EXECUTE FUNCTION trigger_generate_exam_tasks();
++
++-- ============================================================
++-- 完成
++-- ============================================================
++SELECT 'Exam system tables created successfully!' AS result;
+-- 
+2.54.0.windows.1
+

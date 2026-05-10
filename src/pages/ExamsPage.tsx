@@ -92,7 +92,7 @@ function CreateExamModal({
   onSuccess: () => void;
 }) {
   const { user } = useAuth();
-  const { templates, loading: templatesLoading } = useExamTemplates();
+  const { templates } = useExamTemplates();
   const { createExam, loading: creating } = useCreateUserExam();
   
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
@@ -120,7 +120,7 @@ function CreateExamModal({
     );
 
     if (error) {
-      alert('创建失败：' + error.message);
+      alert('创建失败：' + (error.message || '未知错误'));
     } else {
       onSuccess();
       onClose();

@@ -3,11 +3,7 @@
 // ============================================================
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Database } from '../types/database';
-
-type ExamTemplate = Database['public']['Tables']['exam_templates']['Row'];
-type UserExam = Database['public']['Tables']['user_exams']['Row'];
-type UserExamTask = Database['public']['Tables']['user_exam_tasks']['Row'];
+import type { ExamTemplate, UserExam, UserExamTask } from '../types';
 
 // ========== 获取考试模板列表 ==========
 export function useExamTemplates(category?: string) {
@@ -99,7 +95,7 @@ export function useCreateUserExam() {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error: supaError } = await supabase
         .from('user_exams')
         .insert({
           user_id: userId,
@@ -112,11 +108,12 @@ export function useCreateUserExam() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (supaError) throw supaError;
       return { data, error: null };
     } catch (err) {
-      setError(err as Error);
-      return { data: null, error: err };
+      const e = err as Error;
+      setError(e);
+      return { data: null, error: e };
     } finally {
       setLoading(false);
     }
