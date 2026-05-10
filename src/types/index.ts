@@ -125,7 +125,7 @@ export interface DailyCompletion {
 }
 
 // ---------- 路由 ----------
-export type AppPage = 'dashboard' | 'roadmap' | 'projects' | 'stats' | 'settings' | 'login';
+export type AppPage = 'dashboard' | 'roadmap' | 'exams' | 'projects' | 'stats' | 'settings' | 'login';
 
 // ---------- Server酱 ----------
 export interface ServerChanPayload {
@@ -141,4 +141,55 @@ export interface ServerChanResponse {
     readkey: string;
     error?: string;
   };
+}
+
+// ---------- 考试系统 ----------
+export interface ExamTemplate {
+  id: string;
+  name: string;
+  category: string;
+  total_days: number;
+  description: string | null;
+  icon: string | null;
+  created_at: string;
+}
+
+export interface ExamTaskTemplate {
+  id: string;
+  exam_template_id: string;
+  day_offset: number;
+  phase: string;
+  week_number: number | null;
+  task_content: string;
+  estimated_minutes: number | null;
+  difficulty: number | null;
+  task_type: string | null;
+  created_at: string;
+}
+
+export interface UserExam {
+  id: string;
+  user_id: string;
+  exam_template_id: string;
+  exam_name: string;
+  start_date: string;
+  exam_date: string;
+  status: string;
+  progress: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserExamTask {
+  id: string;
+  user_exam_id: string;
+  task_date: string;
+  task_content: string;
+  estimated_minutes: number | null;
+  difficulty: number | null;
+  task_type: string | null;
+  phase: string | null;
+  is_completed: boolean | null;
+  completed_at: string | null;
+  created_at: string;
 }

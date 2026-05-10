@@ -13,6 +13,7 @@ interface LayoutProps {
 const NAV_ITEMS: { key: AppPage; label: string; icon: string }[] = [
   { key: 'dashboard', label: '今日任务', icon: '🟢' },
   { key: 'roadmap', label: '学习路线', icon: '📅' },
+  { key: 'exams', label: '考试计划', icon: '📚' },
   { key: 'projects', label: '开源项目', icon: '🟣' },
   { key: 'stats', label: '进度统计', icon: '📊' },
   { key: 'settings', label: '设置', icon: '⚙️' },

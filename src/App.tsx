@@ -8,6 +8,7 @@ import { Layout } from './components/Layout';
 import { LoginPage } from './pages/Login';
 import { DashboardPage } from './pages/Dashboard';
 import { RoadmapPage } from './pages/Roadmap';
+import { ExamsPage } from './pages/ExamsPage';
 import { ProjectsPage } from './pages/Projects';
 import { StatsPage } from './pages/Stats';
 import { SettingsPage } from './pages/Settings';
@@ -37,6 +38,7 @@ function AppInner() {
       <Suspense fallback={<LoadingFallback />}>
         {page === 'dashboard' && <DashboardPage />}
         {page === 'roadmap' && <RoadmapPage />}
+        {page === 'exams' && <ExamsPage />}
         {page === 'projects' && <ProjectsPage />}
         {page === 'stats' && <StatsPage />}
         {page === 'settings' && <SettingsPage />}
